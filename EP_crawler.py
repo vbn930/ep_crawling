@@ -64,6 +64,15 @@ class Evotech_Crawler:
         self.data["MAKE"] = list()
         self.data["MODEL"] = list()
         self.data["YEAR"] = list()
+        
+    def extract_between_strings(self, original_string, start_string, end_string):
+        pattern = f"{re.escape(start_string)}(.*?){re.escape(end_string)}"
+        match = re.search(pattern, original_string)
+        if match:
+            return match.group(1)
+        else:
+            return None
+
 
     def login(self, id="bikeonline.korea@gmail.com", pw="piston7759!!!!"):
         self.driver.maximize_window()
@@ -77,9 +86,6 @@ class Evotech_Crawler:
 
         submit_btn = self.driver.find_element(By.CLASS_NAME, "button.button-primary")
         submit_btn.click()
-
-        self.logger.log_info("만약 캡챠 화면이 떴다면, 해결 후 엔터키를 눌러주세요.")
-        captcha_input = input("해결 후 엔터키를 입력 해주세요.")
 
         time.sleep(5)
         self.driver.minimize_window()
@@ -208,12 +214,17 @@ class Evotech_Crawler:
                 img_names.append(img_name + ".jpg")
                 self.driver_manager.download_image(img_url, img_name, f"./output/{output_name}/images")
                 img_cnt += 1
-
+                
+        year_text = self.extract_between_strings(year, "(", ")")
+        make_model_str = year.split("(")[0][:-1]
+        
+        product_name = product_name.replace(f"{make_model_str} ", "")
+        product_name = product_name.replace(f"{year_text}", "")
+        
         product = Product(code=code, name=product_name, price=price, dealer_price=dealer_price, description=description,
                           trans_description=translate_manager.translator(self.logger, "en", "ko", description), 
-                          images=img_names, make=make, model=model, year=year)
+                          images=img_names, make=make, model=model, year=year_text)
         
-        self.logger.log_trace(product)
         self.save_item_in_database(product)
 
         self.logger.log_info(f"Product {product_name} crawling completed!")
@@ -258,8 +269,9 @@ class Evotech_Crawler:
                 for year_info in year_infos:
                     year_url = year_info[0]
                     year_name = year_info[1]
-                    self.logger.log_info(f"Current category (make / model / year) : {make_name} / {model_name} / {year_name}")
-                    if not is_found_start_point and make_name == start_info[0] and model_name == start_info[1] and year_name == start_info[2]:
+                    year = self.extract_between_strings(year_name, "(", ")")
+                    self.logger.log_info(f"Current category (make / model / year) : {make_name} / {model_name} / {year}")
+                    if not is_found_start_point and make_name == start_info[0] and model_name == start_info[1] and year == start_info[2]:
                         is_found_start_point = True
                     if is_found_start_point:
                         product_infos = self.get_product_links(year_url)

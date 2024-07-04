@@ -1,2 +1,2 @@
-[2024-06-14 19:10:52][DEBUG]Driver created without proxy
-[2024-06-14 19:11:00][ERROR]로그인에 실패했습니다. 계정 정보를 다시 확인 해주세요.
+[2024-07-04 00:39:37][DEBUG]Driver created without proxy
+[2024-07-04 00:39:44][ERROR]로그인에 실패했습니다. 계정 정보를 다시 확인 해주세요.

@@ -3,6 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import NoSuchElementException
+import undetected_chromedriver as uc 
 from dataclasses import dataclass
 import zipfile
 import requests
@@ -64,7 +65,12 @@ class WebDriverManager():
         self.drive_obj = None
             
     def create_driver(self, user_agent=None, proxy=None, is_headless=False, is_udc=False, is_load_img=True):
-        chrome_options = webdriver.ChromeOptions()
+        if is_udc:
+            chrome_options = uc.ChromeOptions() 
+        else:
+            chrome_options = webdriver.ChromeOptions()
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+            chrome_options.add_experimental_option('excludeSwitches', ['disable-popup-blocking'])
         
         if proxy:
             PROXY_HOST = proxy.host  # rotating proxy or host
@@ -137,16 +143,16 @@ class WebDriverManager():
             chrome_options.add_argument('headless')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument("--disable-notifications")
-        chrome_options.add_experimental_option('excludeSwitches', ['disable-popup-blocking'])
         if not is_load_img:
             prefs = {"profile.managed_default_content_settings.images": 2}
             chrome_options.add_experimental_option("prefs", prefs)
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 
-        service = Service(excutable_path=ChromeDriverManager().install())
-
-        driver = webdriver.Chrome(options=chrome_options, service=service)
-        driver.minimize_window()
+        driver = None
+        
+        if is_udc:
+            driver = uc.Chrome(use_subprocess=True, options=chrome_options)
+        else:
+            driver = webdriver.Chrome(options=chrome_options)
         
         log_msg = ""
         if proxy:
