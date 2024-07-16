@@ -3,7 +3,7 @@ from manager import log_manager
 from manager import file_manager as FM
 import datetime
 
-# pyinstaller -n "Evotech-Preformance Crawler ver1.0" --clean --onefile main.py
+# pyinstaller -n "Evotech-Preformance Crawler ver1.2" --clean --onefile main.py
 
 global log_level
 log_level = log_manager.LogType.DEBUG

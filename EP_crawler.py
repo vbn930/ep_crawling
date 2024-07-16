@@ -14,6 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
 from dataclasses import dataclass
 import pandas as pd
+import pyperclip
 import datetime
 import time
 import re
@@ -21,6 +22,7 @@ import re
 @dataclass
 class Product:
     code: str
+    org_name: str
     name: str
     price: str
     dealer_price: str
@@ -54,6 +56,7 @@ class Evotech_Crawler:
     def data_init(self):
         self.data.clear()
         self.data["상품 코드"] = list()
+        self.data["상품명 원본"] = list()
         self.data["상품명"] = list()
         self.data["가격"] = list()
         self.data["딜러가"] = list()
@@ -79,24 +82,35 @@ class Evotech_Crawler:
         url = "https://evotech-performance.com/account/login"
         self.driver.get(url)
         id_input = self.driver.find_element(By.ID, "CustomerEmail")
-        id_input.send_keys(id)
-
+        id_input.click()
+        pyperclip.copy(id)
+        actions = ActionChains(self.driver)
+        actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL).perform()
+        time.sleep(5)
+        
         pw_input = self.driver.find_element(By.ID, "CustomerPassword")
-        pw_input.send_keys(pw)
+        pw_input.click()
+        pyperclip.copy(pw)
+        actions = ActionChains(self.driver)
+        actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL).perform()
+        time.sleep(5)
 
         submit_btn = self.driver.find_element(By.CLASS_NAME, "button.button-primary")
         submit_btn.click()
 
-        time.sleep(5)
+        time.sleep(10)
         self.driver.minimize_window()
 
-        if self.driver.current_url == url:
+        confirm_url = "https://evotech-performance.com/account"
+        
+        if self.driver.current_url != confirm_url:
             return False
         
         return True
 
     def save_item_in_database(self, item: Product):
         self.data["상품 코드"].append(item.code)
+        self.data["상품명 원본"].append(item.org_name)
         self.data["상품명"].append(item.name)
         self.data["가격"].append(item.price)
         self.data["딜러가"].append(item.dealer_price)
@@ -176,19 +190,21 @@ class Evotech_Crawler:
     def get_product_links(self, year_url):
         product_infos = []
         self.driver.get(year_url)
-        product_elements = self.driver.find_elements(By.CLASS_NAME, "product-name")
-        for product_element in product_elements:
-            product_info = product_element.find_element(By.TAG_NAME, "a")
-            product_url = product_info.get_attribute("href")
-            product_name = product_info.text
-            product_name = product_name.split("\n")
-            product_name = product_name[1]
-            self.logger.log_debug(f"Found item : {product_name}")
-            product_infos.append([product_url, product_name])
+        if self.driver_obj.is_element_exist(By.CLASS_NAME, "product-name"):
+            product_elements = self.driver.find_elements(By.CLASS_NAME, "product-name")
+            for product_element in product_elements:
+                product_info = product_element.find_element(By.TAG_NAME, "a")
+                product_url = product_info.get_attribute("href")
+                product_name = product_info.text
+                product_name = product_name.split("\n")
+                product_name = product_name[1]
+                if "News And Updates" not in product_name:
+                    self.logger.log_debug(f"Found item : {product_name}")
+                    product_infos.append([product_url, product_name])
 
         return product_infos
     
-    def get_product_detail(self, product_url, product_name, make, model, year, output_name):
+    def get_product_detail(self, product_url, product_name, make, model, year, output_name, is_category_crawling=True):
         self.driver.get(product_url)
         price = self.driver.find_element(By.ID, "ComparePrice-").find_element(By.CLASS_NAME, "money").text
         dealer_price = self.driver.find_element(By.ID, "ProductPrice-").find_element(By.CLASS_NAME, "money").text
@@ -209,19 +225,27 @@ class Evotech_Crawler:
         img_cnt = 1
         for i in range(len(img_elements)):
             img_url = img_elements[i].get_attribute("src")
-            if "thumbnail" not in img_url or "360%20logo_small" not in img_url:
+            if "thumbnail" not in img_url and "360%20logo_small" not in img_url:
                 img_name = f"{code}_{img_cnt}"
                 img_names.append(img_name + ".jpg")
                 self.driver_manager.download_image(img_url, img_name, f"./output/{output_name}/images")
                 img_cnt += 1
-                
-        year_text = self.extract_between_strings(year, "(", ")")
-        make_model_str = year.split("(")[0][:-1]
         
-        product_name = product_name.replace(f"{make_model_str} ", "")
-        product_name = product_name.replace(f"{year_text}", "")
+        year_text = year
+        year_alter_text= ""
+        make_model_str = ""
+        org_name = product_name
         
-        product = Product(code=code, name=product_name, price=price, dealer_price=dealer_price, description=description,
+        if is_category_crawling:        
+            year_text = self.extract_between_strings(year, "(", ")")
+            year_alter_text = year_text.replace(" ", "")
+            make_model_str = year.split("(")[0][:-1]
+        
+            product_name = product_name.replace(f"{make_model_str} ", "")
+            product_name = product_name.replace(f"{year_text}", "")
+            product_name = product_name.replace(f"{year_alter_text}", "")
+        
+        product = Product(code=code, org_name=org_name, name=product_name, price=price, dealer_price=dealer_price, description=description,
                           trans_description=translate_manager.translator(self.logger, "en", "ko", description), 
                           images=img_names, make=make, model=model, year=year_text)
         
@@ -229,13 +253,42 @@ class Evotech_Crawler:
 
         self.logger.log_info(f"Product {product_name} crawling completed!")
     
+    def start_keyword_crawling(self):
+        now = datetime.datetime.now()
+        year = f"{now.year}"
+        month = "%02d" % now.month
+        day = "%02d" % now.day
+        output_name = f"{year+month+day}_Keyword_EP"
+        self.file_manager.create_dir(f"./output/{output_name}")
+        self.file_manager.create_dir(f"./output/{output_name}/images")
+        
+        data = pd.read_csv("./settings/keyword_list.csv")
+        keyword_list = data["KEYWORD"].to_list()
+        id, pw = self.get_account_info("./settings/account_setting.csv")
+
+        login_res = self.login(id, pw)
+
+        if login_res == False:
+            self.logger.log_error(f"로그인에 실패했습니다. 계정 정보를 다시 확인 해주세요. 계정 정보가 올바르다면, 프로그램을 다시 실행 해주세요.")
+            return
+        
+        for keyword in keyword_list:
+            search_url = f"https://evotech-performance.com/search?type=product&q={keyword}"
+            product_infos = self.get_product_links(search_url)
+            for product_info in product_infos:
+                product_url = product_info[0]
+                product_name = product_info[1]
+                self.get_product_detail(product_url, product_name, "", "", "", output_name, is_category_crawling=False)
+
+            self.save_database_to_excel(output_name)
+    
     def start_category_crawling(self):
 
         now = datetime.datetime.now()
         year = f"{now.year}"
         month = "%02d" % now.month
         day = "%02d" % now.day
-        output_name = f"{year+month+day}_EP"
+        output_name = f"{year+month+day}_Category_EP"
         self.file_manager.create_dir(f"./output/{output_name}")
         self.file_manager.create_dir(f"./output/{output_name}/images")
         
@@ -246,7 +299,7 @@ class Evotech_Crawler:
         login_res = self.login(id, pw)
 
         if login_res == False:
-            self.logger.log_error(f"로그인에 실패했습니다. 계정 정보를 다시 확인 해주세요.")
+            self.logger.log_error(f"로그인에 실패했습니다. 계정 정보를 다시 확인 해주세요. 계정 정보가 올바르다면, 프로그램을 다시 실행 해주세요.")
             return
         
         is_found_start_point = False
@@ -270,8 +323,8 @@ class Evotech_Crawler:
                     year_url = year_info[0]
                     year_name = year_info[1]
                     year = self.extract_between_strings(year_name, "(", ")")
-                    self.logger.log_info(f"Current category (make / model / year) : {make_name} / {model_name} / {year}")
-                    if not is_found_start_point and make_name == start_info[0] and model_name == start_info[1] and year == start_info[2]:
+                    self.logger.log_info(f"Current category (make / model / year) : {make_name} / {model_name} / {year_name}")
+                    if not is_found_start_point and make_name == start_info[0] and model_name == start_info[1] and year_name == start_info[2]:
                         is_found_start_point = True
                     if is_found_start_point:
                         product_infos = self.get_product_links(year_url)
