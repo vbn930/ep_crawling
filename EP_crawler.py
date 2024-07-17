@@ -317,8 +317,19 @@ class Evotech_Crawler:
                 model_url = model_info[0]
                 model_name = model_info[1]
                 self.logger.log_info(f"Current model : {model_name}")
-
-                year_infos = self.get_year_links(model_url)
+                
+                year_infos = []
+                temp_infos = self.get_year_links(model_url)
+                temp_year_name = temp_infos[0][1]
+                
+                if "(" in temp_year_name and ")" in temp_year_name:
+                    year_infos = self.get_year_links(model_url)
+                else:
+                    temp_infos = self.get_year_links(model_url)
+                    for temp_info in temp_infos:
+                        url = temp_info[0]
+                        year_infos += self.get_year_links(url)
+                
                 for year_info in year_infos:
                     year_url = year_info[0]
                     year_name = year_info[1]
