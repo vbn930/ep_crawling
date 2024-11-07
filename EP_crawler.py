@@ -77,7 +77,7 @@ class Evotech_Crawler:
             return None
 
 
-    def login(self, id="bikeonline.korea@gmail.com", pw="piston7759!!!!"):
+    def login(self, id, pw):
         self.driver.maximize_window()
         url = "https://evotech-performance.com/account/login"
         self.driver.get(url)
